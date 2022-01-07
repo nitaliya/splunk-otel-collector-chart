@@ -197,6 +197,7 @@
       "type": "string",
       "enum": [
         "eks",
+        "eks/fargate",
         "gke",
         "gke/autopilot",
         "aks",
@@ -699,6 +700,109 @@
               }
             }
           }
+        }
+      }
+    },
+    "clusterReceiverObserver": {
+      "description": "Splunk OpenTelemetry Collector cluster receiver observer configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "string"
+          ]
+        },
+        "setClusterReceiverNodeLabel": {
+          "type": ["boolean"]
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": [
+                    "string",
+                    "integer"
+                  ]
+                },
+                "memory": {
+                  "type": "string"
+                }
+              }
+            },
+            "requests": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cpu": {
+                  "type": [
+                    "string",
+                    "integer"
+                  ]
+                },
+                "memory": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer"
+        },
+        "priorityClassName": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "k8sEventsEnabled": {
+          "type": "boolean"
+        },
+        "podLabels": {
+          "type": "object"
+        },
+        "extraEnvs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extraVolumes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extraVolumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "config": {
+          "type": "object"
         }
       }
     },

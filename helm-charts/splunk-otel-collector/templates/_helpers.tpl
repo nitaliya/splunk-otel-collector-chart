@@ -308,3 +308,26 @@ compatibility with the old config group name: "otelK8sClusterReceiver".
 {{- deepCopy .Values.otelK8sClusterReceiver | mustMergeOverwrite (deepCopy .Values.clusterReceiver) | toYaml }}
 {{- end }}
 {{- end -}}
+
+{{/*
+"clusterReceiverObserver" configuration values
+*/}}
+{{- define "splunk-otel-collector.clusterReceiverObserver" -}}
+{{- .Values.clusterReceiverObserver | toYaml }}
+{{- end -}}
+
+{{/*
+"clusterReceiverObserverEnabled" that's based on enabled flags and eks/fargate distribution
+*/}}
+{{- define "splunk-otel-collector.clusterReceiverObserverEnabled" -}}
+{{- $clusterReceiverObserver := fromYaml (include "splunk-otel-collector.clusterReceiverObserver" .) }}
+{{- and (eq (include "splunk-otel-collector.metricsEnabled" .) "true") (or (eq (toString $clusterReceiverObserver.enabled) "true") (and (eq (toString $clusterReceiverObserver.enabled) "false-default") (eq (include "splunk-otel-collector.distribution" .) "eks/fargate"))) }}
+{{- end -}}
+
+{{/*
+"clusterReceiverNodeLabelerInitContainerEnabled" that's based on clusterReceiverObserverEnabled and .Values.clusterReceiverObserver.setClusterReceiverNodeLabel
+*/}}
+{{- define "splunk-otel-collector.clusterReceiverNodeLabelerInitContainerEnabled" -}}
+{{- $clusterReceiverObserverEnabled := (include "splunk-otel-collector.clusterReceiverObserverEnabled" .) }}
+{{- and (eq (toString $clusterReceiverObserverEnabled) "true") (eq (toString .Values.clusterReceiverObserver.setClusterReceiverNodeLabel) "true") -}}
+{{- end -}}

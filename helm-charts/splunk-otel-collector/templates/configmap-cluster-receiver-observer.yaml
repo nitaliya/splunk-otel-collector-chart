@@ -1,0 +1,17 @@
+{{ $clusterReceiverObserver := fromYaml (include "splunk-otel-collector.clusterReceiverObserver" .) }}
+{{- if eq (include "splunk-otel-collector.clusterReceiverObserverEnabled" .) "true" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "splunk-otel-collector.fullname" . }}-otel-eks-fargate-cluster-receiver-observer
+  labels:
+    {{- include "splunk-otel-collector.commonLabels" . | nindent 4 }}
+    app: {{ template "splunk-otel-collector.name" . }}
+    chart: {{ template "splunk-otel-collector.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+  relay: |
+    {{- $config := include "splunk-otel-collector.clusterReceiverObserverConfig" . | fromYaml }}
+    {{- $clusterReceiverObserver.config | mustMergeOverwrite $config | toYaml | nindent 4 }}
+{{- end }}

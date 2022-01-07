@@ -125,10 +125,11 @@ cloudProvider: ""
 
 ################################################################################
 # Kubernetes distribution being run. Leave empty for other.
+# - "aks" (Azure Kubernetes Service)
 # - "eks" (Amazon Elastic Kubernetes Service)
+# - "eks/fargate" (Amazon Elastic Kubernetes Service with Fargate profiles )
 # - "gke" (Google Kubernetes Engine / Standard mode)
 # - "gke/autopilot" (Google Kubernetes Engine / Autopilot mode)
-# - "aks" (Azure Kubernetes Service)
 # - "openshift" (RedHat OpenShift)
 ################################################################################
 
@@ -338,6 +339,68 @@ clusterReceiver:
 
   # OpenTelemetry Collector configuration for K8s Cluster Receiver deployment can be overriden in this field.
   # Default configuration defined in templates/config/_otel-k8s-cluster-receiver-config.tpl
+  # Any additional fields will be merged into the defaults,
+  # existing fields can be disabled by setting them to null value.
+  config: {}
+
+################################################################################
+# OpenTelemetry eks/fargate cluster receiver observer
+# This is an extra 1-replica deployment of OpenTelemetry Collector used
+# specifically to report metrics about the cluster receiver deployment, as
+# fargate pods cannot reach their node's kubelet.
+################################################################################
+
+# Cluster receiver collects cluster level metrics from the Kubernetes API.
+# It has to be running on one pod, so it uses its own dedicated deployment with 1 replica.
+
+clusterReceiverObserver:
+  # default falsiness that will be overridden if distribution is "eks/fargate"
+  # unless set to boolean false
+  enabled: false-default
+
+  # Whether the Cluster Receiver fargate node should have an identifying label set
+  # by an init container (will allow "patch" role for nodes resources).
+  # If not desired but clusterReceiverObserver is overall,
+  # manually set "splunk-otel-is-eks-fargate-cluster-receiver-node" label on desired node to "true"
+  setClusterReceiverNodeLabel: true
+
+  # Shouldn't need to be adjusted since this collector is only observing a single node
+  resources:
+    limits:
+      cpu: 200m
+      memory: 500Mi
+
+  # Scheduling configurations
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Pod configurations
+  securityContext: {}
+  terminationGracePeriodSeconds: 600
+  priorityClassName: ""
+
+  # k8s cluster receiver collector observer annotations
+  annotations: {}
+  podAnnotations: {}
+
+  # This Flag enables k8s events collection with smartagent/kubernetes-events receiver
+  # You can override list of events collected by default using the following config option:
+  # `clusterReceiverObserver.config.receivers.smartagent/kubernetes-events.whitelistedEvents`
+  k8sEventsEnabled: false
+
+  # k8s cluster receiver observer extra pod labels
+  podLabels: {}
+
+  # Extra environment variables to be set in the cluster receiver observer container
+  extraEnvs: []
+
+  # Extra volumes to be mounted to the k8s cluster receiver observer container.
+  extraVolumes: []
+  extraVolumeMounts: []
+
+  # OpenTelemetry Collector configuration for K8s Cluster Receiver Observer deployment can be overridden in this field.
+  # Default configuration defined in templates/config/_otel-eks-fargate-cluster-receiver-observer.tpl
   # Any additional fields will be merged into the defaults,
   # existing fields can be disabled by setting them to null value.
   config: {}

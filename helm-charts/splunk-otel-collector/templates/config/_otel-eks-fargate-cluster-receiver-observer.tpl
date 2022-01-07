@@ -1,42 +1,32 @@
 {{/*
-Config for the otel-collector k8s cluster receiver deployment.
-The values can be overridden in .Values.clusterReceiver.config
+Config for the otel-collector eks/fargate cluster receiver observer deployment.
+The values can be overridden in .Values.clusterReceiverObserver.config
 */}}
-{{- define "splunk-otel-collector.clusterReceiverConfig" -}}
+{{- define "splunk-otel-collector.clusterReceiverObserverConfig" -}}
 {{ $gateway := fromYaml (include "splunk-otel-collector.gateway" .) -}}
-{{ $clusterReceiver := fromYaml (include "splunk-otel-collector.clusterReceiver" .) -}}
+{{ $clusterReceiverObserver := fromYaml (include "splunk-otel-collector.clusterReceiverObserver" .) -}}
 extensions:
   health_check:
 
   memory_ballast:
     size_mib: ${SPLUNK_BALLAST_SIZE_MIB}
 
-  {{- if eq (include "splunk-otel-collector.distribution" .) "eks/fargate" }}
   # k8s_observer w/ pod and node detection for eks/fargate deployment
   k8s_observer:
     auth_type: serviceAccount
-    observe_pods: true
+    observe_pods: false
     observe_nodes: true
-  {{- end }}
 
 receivers:
-  # Prometheus receiver scraping metrics from the pod itself, both otel and fluentd
+  # Prometheus receiver scraping metrics from the pod itself
   prometheus/k8s_cluster_receiver:
     config:
       scrape_configs:
-      - job_name: 'otel-k8s-cluster-receiver'
+      - job_name: 'otel-k8s-cluster-receiver-observer'
         scrape_interval: 10s
         static_configs:
         - targets: ["${K8S_POD_IP}:8889"]
-  k8s_cluster:
-    auth_type: serviceAccount
-    {{- if eq (include "splunk-otel-collector.o11yMetricsEnabled" $) "true" }}
-    metadata_exporters: [signalfx]
-    {{- end }}
-    {{- if eq (include "splunk-otel-collector.distribution" .) "openshift" }}
-    distribution: openshift
-    {{- end }}
-  {{- if $clusterReceiver.k8sEventsEnabled }}
+  {{- if $clusterReceiverObserver.k8sEventsEnabled }}
   smartagent/kubernetes-events:
     type: kubernetes-events
     alwaysClusterReporter: true
@@ -50,13 +40,12 @@ receivers:
     - reason: FailedCreate
       involvedObjectKind: Job
   {{- end }}
-  {{- if eq (include "splunk-otel-collector.distribution" .) "eks/fargate" }}
-  # dynamically created kubeletstats receiver to report all Fargate "node" kubelet stats
-  # with exception of collector "node's" own since Fargate forbids connection.
-  receiver_creator:
+
+  # dynamically created kubeletstats receiver to report kubelet stats for cluster receiver "node"
+  receiver_creator/eks-fargate-cluster-receiver:
     receivers:
       kubeletstats:
-        rule: type == "k8s.node" && name contains "fargate" && not ( name contains "${K8S_NODE_NAME}" )
+        rule: type == "k8s.node" && name contains "fargate" && labels["splunk-otel-is-eks-fargate-cluster-receiver-node"] == "true"
         config:
           auth_type: serviceAccount
           collection_interval: 10s
@@ -69,7 +58,7 @@ receivers:
             - node
     watch_observers:
       - k8s_observer
-  {{- end }}
+
 
 processors:
   {{- include "splunk-otel-collector.otelMemoryLimiterConfig" . | nindent 2 }}
@@ -78,7 +67,7 @@ processors:
 
   {{- include "splunk-otel-collector.resourceDetectionProcessor" . | nindent 2 }}
 
-  {{- if and $clusterReceiver.k8sEventsEnabled (eq (include "splunk-otel-collector.o11yMetricsEnabled" .) "true") }}
+  {{- if and $clusterReceiverObserver.k8sEventsEnabled (eq (include "splunk-otel-collector.o11yMetricsEnabled" .) "true") }}
   resource/add_event_k8s:
     attributes:
       - action: insert
@@ -141,7 +130,7 @@ processors:
 exporters:
   {{- if eq (include "splunk-otel-collector.o11yMetricsEnabled" $) "true" }}
   signalfx:
-    {{- if $gateway.enabled }}
+    {{ if $gateway.enabled }}
     ingest_url: http://{{ include "splunk-otel-collector.fullname" . }}:9943
     api_url: http://{{ include "splunk-otel-collector.fullname" . }}:6060
     {{- else }}
@@ -152,7 +141,7 @@ exporters:
     timeout: 10s
   {{- end }}
 
-  {{- if and (eq (include "splunk-otel-collector.logsEnabled" $) "true") $clusterReceiver.k8sEventsEnabled }}
+  {{- if and (eq (include "splunk-otel-collector.logsEnabled" $) "true") $clusterReceiverObserver.k8sEventsEnabled }}
   splunk_hec/o11y:
     endpoint: {{ include "splunk-otel-collector.o11yIngestUrl" . }}/v1/log
     token: "${SPLUNK_OBSERVABILITY_ACCESS_TOKEN}"
@@ -165,20 +154,11 @@ exporters:
   {{- end }}
 
 service:
-  {{- if eq (include "splunk-otel-collector.distribution" .) "eks/fargate" }}
   extensions: [health_check, memory_ballast, k8s_observer]
-  {{- else }}
-  extensions: [health_check, memory_ballast]
-  {{- end }}
   pipelines:
     # k8s metrics pipeline
     metrics:
-      {{- if eq (include "splunk-otel-collector.distribution" .) "eks/fargate" }}
-      receivers: [k8s_cluster, receiver_creator]
-      {{- else }}
-      receivers: [k8s_cluster]
-      {{- end }}
-
+      receivers: [receiver_creator/eks-fargate-cluster-receiver]
       processors: [memory_limiter, batch, resource]
       exporters:
         {{- if (eq (include "splunk-otel-collector.o11yMetricsEnabled" .) "true") }}
@@ -207,7 +187,7 @@ service:
         {{- end }}
     {{- end }}
 
-    {{- if and $clusterReceiver.k8sEventsEnabled (eq (include "splunk-otel-collector.o11yMetricsEnabled" .) "true") }}
+    {{- if and $clusterReceiverObserver.k8sEventsEnabled (eq (include "splunk-otel-collector.o11yMetricsEnabled" .) "true") }}
     logs/events:
       receivers:
         - smartagent/kubernetes-events
@@ -223,28 +203,3 @@ service:
         {{- end }}
     {{- end }}
 {{- end }}
-
-{{- define "splunk-otel-collector.clusterReceiverInitContainers" -}}
-{{- if eq (include "splunk-otel-collector.clusterReceiverNodeLabelerInitContainerEnabled" .) "true" }}
-- name: cluster-receiver-node-labeler
-  image: public.ecr.aws/amazonlinux/amazonlinux:latest
-  imagePullPolicy: IfNotPresent
-  command: [ "sh", "-c"]
-  securityContext:
-    runAsUser: 0
-  args:
-    - >
-     curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.16.15/2020-11-02/bin/linux/amd64/kubectl
-     && curl -o kubectl.sha256 https://amazon-eks.s3.us-west-2.amazonaws.com/1.16.15/2020-11-02/bin/linux/amd64/kubectl.sha256
-     && ACTUAL=$( sha256sum kubectl | awk '{print $1}' )
-     && EXPECTED=$( cat kubectl.sha256 | awk '{print $1}' )
-     && if [[ "${ACTUAL}" != "${EXPECTED}" ]]; then echo "${ACTUAL} != ${EXPECTED}" ; exit 1 ; fi
-     && chmod a+x kubectl
-     && ./kubectl label nodes $K8S_NODE_NAME splunk-otel-is-eks-fargate-cluster-receiver-node=true
-  env:
-    - name: K8S_NODE_NAME
-      valueFrom:
-        fieldRef:
-          fieldPath: spec.nodeName
-{{- end -}}
-{{- end -}}

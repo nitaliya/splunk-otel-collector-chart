@@ -43,10 +43,11 @@ Use the `distribution` parameter to provide information about underlying
 Kubernetes deployment. This parameter allows the connector to automatically
 scrape additional metadata. The supported options are:
 
+- `aks` - Azure AKS
 - `eks` - Amazon EKS
+- `eks/fargate` - Amazon EKS with Fargate profiles
 - `gke` - Google GKE / Standard mode
 - `gke/autopilot` - Google GKE / Autopilot mode
-- `aks` - Azure AKS
 - `openshift` - Red Hat OpenShift
 
 This value can be omitted if none of the values apply.
@@ -120,6 +121,35 @@ the following line to your custom values.yaml:
 ```yaml
 priorityClassName: splunk-otel-agent-priority
 ```
+
+## EKS Fargate support
+
+If you want to run the Splunk OpenTelemetry Collector in [Amazon Elastic Kubernetes Service
+with Fargate profiles](https://docs.aws.amazon.com/eks/latest/userguide/fargate.html),
+make sure to set the required `distribution` value to `eks/fargate`:
+
+```yaml
+distribution: eks/fargate
+```
+
+**NOTE:** Fluentd and Native OTel logs collection are not yet automatically configured in EKS with Fargate profiles
+
+This distribution will operate similarly to the `eks` distribution but with the following distinctions:
+
+1. The Collector agent daemonset is not applied since Fargate doesn't support daemonsets. Any desired Collector instances
+running as agents must be configured manually as sidecar containers in your custom deployments. This includes any application
+logging services like Fluentd. We recommend setting the `gateway.enabled` to `true` and configuring your instrumented
+applications to report metrics, traces, and logs to the gateway's `<installed-chart-name>-splunk-otel-collector` service address if no
+agent instances are used in your cluster.
+3. The configured Cluster Receiver single-replica deployment is configured with a
+[Kubernetes Observer extension](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/observer/k8sobserver/README.md)
+that discovers the cluster's nodes and pods.
+4. The configured Cluster Receiver single-replica deployment is configured with a dynamically created
+[Kubelet Stats receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/README.md)
+that will report kubelet metrics for all observed Fargate nodes (expect its own as it's unreachable by the collector's Pod).
+5. An additional "Cluster Receiver Observer" single-replica deployment similar to the Cluster Receiver's is configured to report
+just the Kubelet stats for the Cluster Receiver node for additional Collector monitoring. This is made possible by Fargate-specific
+deployment label.
 
 ## Logs collection
 
